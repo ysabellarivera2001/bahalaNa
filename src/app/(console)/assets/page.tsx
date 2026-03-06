@@ -13,6 +13,8 @@ export default function AssetsPage() {
   const [history, setHistory] = useState<TransferRecord[]>([]);
   const [search, setSearch] = useState("");
   const [onlyMissing, setOnlyMissing] = useState(false);
+  const [selectedIdentifiers, setSelectedIdentifiers] = useState<string[]>([]);
+  const [transferMessage, setTransferMessage] = useState("");
 
   useEffect(() => {
     void getAssetComparison().then(setRows);
@@ -29,6 +31,47 @@ export default function AssetsPage() {
       return target.includes(search.toLowerCase());
     });
   }, [onlyMissing, rows, search]);
+
+  const selectedCount = selectedIdentifiers.length;
+
+  function toggleSelection(identifier: string, checked: boolean) {
+    setSelectedIdentifiers((current) => {
+      if (checked) {
+        if (current.includes(identifier)) {
+          return current;
+        }
+        return [...current, identifier];
+      }
+
+      return current.filter((item) => item !== identifier);
+    });
+  }
+
+  function runMockTransfer() {
+    if (selectedIdentifiers.length === 0) {
+      setTransferMessage("Select at least one asset before running transfer.");
+      return;
+    }
+
+    const selectedRows = rows.filter((row) => selectedIdentifiers.includes(row.kaseya.identifier));
+    const now = new Date().toISOString();
+
+    const newRecords: TransferRecord[] = selectedRows.map((row, index) => ({
+      id: `t-mock-${Date.now()}-${index}`,
+      kaseyaIdentifier: row.kaseya.identifier,
+      action: row.action,
+      status: row.kaseya.hasAssetInfo ? "success" : "partial",
+      message: row.kaseya.hasAssetInfo
+        ? `${row.action} prepared and queued in mock mode.`
+        : `${row.action} queued with partial detail payload.`,
+      timestamp: now,
+      mappedNonEmptyCount: row.kaseya.hasAssetInfo ? Math.max(4, row.kaseya.assetInfoCount) : 3,
+    }));
+
+    setHistory((current) => [...newRecords, ...current]);
+    setSelectedIdentifiers([]);
+    setTransferMessage(`Mock transfer executed for ${newRecords.length} asset(s).`);
+  }
 
   return (
     <div className="space-y-4">
@@ -53,9 +96,14 @@ export default function AssetsPage() {
             />
             Show only records not found in Strev
           </label>
-          <button className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--accent-contrast)]">
-            Transfer Selected (Mock)
+          <button
+            onClick={runMockTransfer}
+            disabled={selectedCount === 0}
+            className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--accent-contrast)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Transfer Selected (Mock) {selectedCount > 0 ? `(${selectedCount})` : ""}
           </button>
+          <p className="text-sm text-[var(--muted)]">{transferMessage}</p>
         </div>
       </Card>
 
@@ -63,6 +111,18 @@ export default function AssetsPage() {
         <DataTable
           rows={filtered}
           columns={[
+            {
+              key: "select",
+              title: "Select",
+              render: (row) => (
+                <input
+                  type="checkbox"
+                  checked={selectedIdentifiers.includes(row.kaseya.identifier)}
+                  onChange={(event) => toggleSelection(row.kaseya.identifier, event.target.checked)}
+                  aria-label={`Select ${row.kaseya.identifier}`}
+                />
+              ),
+            },
             {
               key: "kaseya",
               title: "Kaseya",
@@ -101,7 +161,11 @@ export default function AssetsPage() {
             {
               key: "action",
               title: "Transfer Action",
-              render: (row) => <StatusBadge status={row.action === "CREATE" ? "info" : "success"} />,
+              render: (row) => (
+                <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-bold">
+                  {row.action}
+                </span>
+              ),
             },
             {
               key: "modified",

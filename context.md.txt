@@ -1,0 +1,273 @@
+# Context: GSIS Asset Sync Platform (Kaseya -> Strev/Revnue)
+ 
+## Project Objective
+ 
+Provide a production-style operator console that:
+ 
+- compares Kaseya and Strev assets side-by-side
+- performs controlled transfer (`create` or `update`) per asset
+- supports autosync (webhook + periodic reconcile)
+- tracks operational status, logs, settings, and support diagnostics
+ 
+## Architecture Overview
+ 
+### Backend
+ 
+- Main service: `asset_dashboard.py`
+- Technology: Python standard HTTP server + direct API calls
+- Data stores:
+  - `.env` for runtime configuration
+  - `sync_events.db` (SQLite) for autosync queue/events
+  - `activity_log.jsonl` + `activity_state.json` for notifications/messages
+  - `support_tickets.jsonl` for Support page ticket records
+ 
+### Frontend
+ 
+- Static app in `web/`:
+  - `index.html` + `app.js`: dashboard and manual transfer
+  - `sync-status.html` + `sync-status.js`: operational health/status
+  - `settings.html` + `settings.js`: `.env` editor
+  - `support.html` + `support.js`: diagnostics, checks, and ticketing
+  - shared style system in `styles.css`
+ 
+### CLI Utilities
+ 
+- `kaseya_client.py` / `get_kaseya_assets.ps1`: Kaseya connectivity
+- `revnue_connectivity_check.py`: Strev connectivity
+- `list_kaseya_fields.py`: Kaseya schema extraction
+- `list_revnue_assets.py`: Strev listing/filter verification
+- `sync_kaseya_to_revnue.py`: CLI transfer dry-run/live
+ 
+## Core Business Rules
+ 
+### Match Key (authoritative)
+ 
+Use identifier equality only:
+ 
+- `Kaseya.Identifier == Strev.serial_number`
+- OR `Kaseya.Identifier == Strev.asset_tag`
+ 
+Asset name is non-authoritative and can change.
+ 
+### Transfer Action Decision
+ 
+For each selected Kaseya asset:
+ 
+- if identifier exists in Strev -> `UPDATE`
+- if identifier does not exist in Strev -> `CREATE`
+ 
+### Delete Handling
+ 
+Autosync delete events remove matching Strev assets by identifier match.
+ 
+## Data Mapping (Current)
+ 
+Baseline payload built from Kaseya asset:
+ 
+- `company` <- `REVNUE_COMPANY`
+- `name` <- `Kaseya.Name`
+- `serial_number` <- `Kaseya.Identifier`
+- `asset_tag` <- `Kaseya.Identifier`
+- `category` <- default `{"id": 25, "name": "Devices"}`
+- template fields from Kaseya `AssetInfo` map into configured Strev template structure
+ 
+### Data quality safeguards
+ 
+- Kaseya payload completeness is variable across endpoints/assets.
+- Detail resolver order now prioritizes richer sources:
+  1. unpaged list source (primary)
+  2. filter lookup
+  3. specific-device endpoint candidates
+  4. paged list fallback
+- Transfer update path preserves existing non-empty Strev template fields when incoming mapped values are blank.
+- Rows with incomplete Kaseya details generate warnings and are treated as `partial` in activity logs.
+ 
+## Implemented Backend Modules
+ 
+### API proxy and transfer
+ 
+- Kaseya fetch:
+  - `fetch_kaseya_assets(top, skip)`
+  - `fetch_all_kaseya_assets(...)`
+  - `fetch_kaseya_asset_by_identifier(identifier)`
+- Strev fetch:
+  - `fetch_revnue_assets(...)`
+  - `fetch_all_revnue_assets(...)`
+  - `fetch_revnue_exact_matches(company, identifiers, names)`
+- Transfer:
+  - `transfer_kaseya_assets_to_revnue(assets)`
+  - create/update lookup and execution
+  - delete helper: `delete_revnue_asset(company, revnue_id)`
+  - template merge guard: `_merge_template_fields_preserve_existing(...)`
+ 
+### Autosync engine
+ 
+- Queue table: `sync_events` in `sync_events.db`
+- Engine class: `AutoSyncEngine`
+  - worker loop
+  - periodic reconcile loop
+  - retry scheduling
+  - status reporting
+- Event ingest:
+  - `POST /api/webhooks/kaseya`
+  - parser: `parse_kaseya_webhook_payload(...)`
+ 
+### Activity logging
+ 
+- notification/message channels
+- retention-capped JSONL log
+- unread badge tracking
+- transfer warnings emit `partial` status entries in both message and notification channels
+ 
+### Settings runtime management
+ 
+- read `.env` entries
+- validate and persist updates
+- apply runtime autosync settings without restart where possible
+ 
+### Support diagnostics and ticketing
+ 
+- runtime diagnostics snapshot
+- connectivity checks (Kaseya + Strev)
+- support ticket capture with embedded sync snapshot
+ 
+### Mapping engine (planned extension)
+ 
+- Deterministic mapper remains source of truth for production writes.
+- AI-assisted suggestion queue is planned for unmapped Kaseya fields.
+- Suggestions include target-field proposal, transform rule, confidence, and rationale.
+- Approved suggestions are versioned and promoted via controlled change process.
+ 
+## Implemented API Endpoints
+ 
+### Dashboard and transfer
+ 
+- `GET /api/kaseya/assets`
+- `GET /api/revnue/assets`
+- `POST /api/transfer`
+ 
+### Autosync
+ 
+- `GET /api/sync/status`
+- `GET /api/sync/overview?window=15m|1h|24h|7d`
+- `POST /api/sync/reconcile`
+- `POST /api/sync/dry-run`
+- `POST /api/webhooks/kaseya`
+ 
+### Activity center
+ 
+- `GET /api/logs?limit=50`
+- `POST /api/logs/mark-read`
+ 
+### Settings
+ 
+- `GET /api/settings/env`
+- `POST /api/settings/env`
+ 
+### Support
+ 
+- `GET /api/support/diagnostics`
+- `GET /api/support/checks`
+- `GET /api/support/tickets?limit=50`
+- `POST /api/support/tickets`
+ 
+## Frontend Feature Inventory
+ 
+### Dashboard (`index.html`)
+ 
+- modern shell with navbar + collapsible sidebar
+- Kaseya and Strev tables with independent search and pagination
+- readable `Modified Date` formatting
+- Kaseya multi-select and batch transfer arrow
+- one-time batch confirmation modal
+- per-row transfer history table
+- filter: show only Kaseya records not present in Strev
+- Activity Center modal (notifications + messages)
+- autosync mode toggle button (LIVE/OFFLINE) in navbar
+- floating loading spinner overlay during load/transfer
+- warning-aware transfer detail with debug metadata summary
+ 
+### Sync Status (`sync-status.html`)
+ 
+- health state (`healthy/degraded/critical`)
+- queue metrics and success-rate KPIs
+- reconcile and worker heartbeat visibility
+- failed/partial events table
+- recent events table
+ 
+### Settings (`settings.html`)
+ 
+- full `.env` editor with one textbox per core variable
+- additional-variable table editor
+- secret show/hide controls
+- save/reload actions
+ 
+### Support (`support.html`)
+ 
+- diagnostics summary and safe config visibility
+- live connectivity check runner
+- recent failed/partial activity view
+- support ticket creation form
+- ticket history list
+- diagnostics JSON export
+ 
+## Known Platform Constraints
+ 
+### Kaseya
+ 
+- uses `/api/v3/assets/`
+- `$top` hard limit is `100`
+- some networks require `curl.exe -4` + `TOKEN_ID:TOKEN_SECRET` path
+- tenant IP whitelist can block requests
+- some assets/endpoints can return reduced payloads (`AssetInfo` empty), which limits custom-field enrichment
+ 
+### Strev/Revnue
+ 
+- query behavior varies by tenant
+- exact matching should always use identifier fields, not name only
+ 
+## SMAX Integration Status
+ 
+### Current state
+ 
+- Not wired yet.
+- Supported as a planned extension of the Support module.
+ 
+### Approved direction
+ 
+- Keep current local ticket log as internal source of truth.
+- Add backend SMAX adapter for:
+  - create incident/request in SMAX
+  - persist SMAX ticket ID/URL back into local support records
+  - optional status sync from SMAX to local ticket history
+ 
+### Planned controls
+ 
+- per-ticket `Push to SMAX` or policy-based auto-push (e.g., high/critical)
+- retries and failure-safe queue for SMAX calls
+- no direct browser-to-SMAX calls (backend only)
+ 
+## AI-Assisted Mapping Status
+ 
+### Current state
+ 
+- Not wired yet.
+- Deterministic mapping is active and stable.
+ 
+### Planned direction
+ 
+- Add backend suggestion engine for unmapped field detection.
+- Add approval workflow before mapping activation.
+- Add mapping versioning, audit trail, and rollback support.
+ 
+## Operational Guidelines
+ 
+- Never expose or commit tokens/secrets.
+- Hard refresh after frontend changes.
+- Restart backend after server-side code changes.
+- Use Sync Status and Support checks before demo/production transfers.
+- For custom-field issues, validate transfer debug details:
+  - `has_assetinfo`
+  - `assetinfo_count`
+  - `detail_source`
+  - `mapped_nonempty_count`
