@@ -32,6 +32,11 @@ function applyPalette(palette: ThemePalette) {
   root.style.setProperty("--accent-contrast", palette.colors.accentContrast);
 }
 
+function forceLightMode() {
+  const root = document.documentElement;
+  root.setAttribute("data-theme", "light");
+}
+
 function findPaletteById(id: string | null): ThemePalette | undefined {
   if (!id) {
     return undefined;
@@ -50,6 +55,7 @@ export function ThemePaletteProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    forceLightMode();
     applyPalette(activePalette);
     window.localStorage.setItem(STORAGE_KEY, activePalette.id);
   }, [activePalette]);

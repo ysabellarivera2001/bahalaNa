@@ -1,16 +1,40 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { useThemePalette } from "@/components/theme/theme-palette-provider";
 import { themePalettes } from "@/lib/theme-palettes";
 
+function useHydrated() {
+  return useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+}
+
 export function ThemePreferences() {
+  const hydrated = useHydrated();
   const { activePalette, setPaletteById } = useThemePalette();
+
+  if (!hydrated) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-[var(--muted)]">
+          Select your preferred color theme. This choice is saved automatically in your browser.
+        </p>
+        <div className="rounded-lg border bg-[var(--surface)] p-3 text-sm text-[var(--muted)]">
+          Loading appearance preferences...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
       <p className="text-sm text-[var(--muted)]">
         Select your preferred color theme. This choice is saved automatically in your browser.
       </p>
+      <p className="text-sm font-semibold text-[var(--text)]">Accent Palette</p>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {themePalettes.map((palette) => {
           const selected = palette.id === activePalette.id;

@@ -15,18 +15,23 @@
   --border: #d8ccbf;
   --accent: #b88588;
   --accent-contrast: #2f2425;
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #151515;
-    --surface: #1f1f1f;
-    --surface-soft: #2a2a2a;
-    --text: #f5efe7;
-    --muted: #c6bbb2;
-    --border: #3b3632;
-  }
+:root[data-theme="light"] {
+  --bg: #f6f1ea;
+  --surface: #fffaf3;
+  --surface-soft: #f3eae0;
+  --text: #2f2924;
+  --muted: #746a61;
+  --border: #d8ccbf;
+  color-scheme: light;
 }
+
+/*
+  Dark mode is temporarily disabled until mode switching issues are resolved.
+  Keep the light base theme active and continue using palettes as accent colors.
+*/
 
 @theme inline {
   --color-background: var(--bg);
