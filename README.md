@@ -1,36 +1,118 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Data Operations Console (MVP)
 
-## Getting Started
+A local, multi-page operator console for the GSIS Asset Sync workflow between Kaseya and Strev/Revnue.
 
-First, run the development server:
+## Project Overview
+
+This MVP provides a production-style admin console that supports:
+
+- side-by-side asset comparison
+- controlled transfer actions (CREATE/UPDATE decision by identifier)
+- autosync health visibility and operations controls
+- activity logs and unread visibility
+- runtime settings visibility with secret masking
+- support diagnostics and ticket history
+
+The app is intentionally frontend-first with typed mock services so it runs locally without requiring backend API availability.
+
+## Features
+
+- `Dashboard`: KPIs, sync health summary, latest transfer outcomes
+- `Asset Console`: compare Kaseya vs Strev assets, search/filter, transfer action view, transfer history
+- `Sync Status`: queue and health metrics, reconcile and dry-run controls (mock)
+- `Activity Center`: operational logs with severity and status
+- `Settings`: safe `.env` setting viewer (masked secret values)
+- `Support`: diagnostics snapshot, connectivity state, support tickets
+- `Palette Cycling`: one-click theme switching across curated floral palettes (persisted per browser)
+
+## Technology
+
+- Next.js (App Router)
+- React + TypeScript
+- Tailwind CSS v4
+
+## Installation
+
+```bash
+npm install
+```
+
+## Running Locally
+
+Single command:
+
+```bash
+npm run local
+```
+
+Alternative standard dev command:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+App URL:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `http://localhost:3000`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Build for Production
 
-## Learn More
+```bash
+npm run build
+npm run start
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Environment Variables
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The app reads environment variables when available and falls back to safe mock settings.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Expected keys:
 
-## Deploy on Vercel
+- `REVNUE_COMPANY`
+- `REVNUE_ASSET_URL`
+- `REVNUE_TEST_URL`
+- `REVNUE_TOKEN`
+- `KASEYA_TOKEN_ID`
+- `KASEYA_TOKEN_SECRET`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Notes:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Secret values are masked in the UI.
+- `.env*` is already ignored by git.
+- Use `.env.local` for local runtime values.
+
+## Project Structure
+
+```txt
+src/
+  app/
+    (console)/
+      dashboard/
+      assets/
+      sync-status/
+      activity/
+      settings/
+      support/
+  components/
+    layout/
+    ui/
+    tables/
+    logs/
+  services/
+  data/
+  types/
+  lib/
+```
+
+## Data and API Strategy
+
+- Services in `src/services/*` return typed mock data for MVP reliability.
+- Structure mirrors backend endpoints described in context (`/api/transfer`, `/api/sync/status`, `/api/settings/env`, etc.) for straightforward future API integration.
+- Mock models and records are centralized in `src/data/mockData.ts`.
+
+## Notes for Next Iteration
+
+- Replace mock services with real API calls to `asset_dashboard.py` backend endpoints.
+- Add write actions for settings persistence and ticket creation.
+- Add SMAX push adapter and optional status sync.
+- Add AI mapping suggestion workflow as separate module.
