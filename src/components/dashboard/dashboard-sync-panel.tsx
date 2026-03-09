@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 
 type DashboardComparisonRow = {
@@ -27,12 +27,27 @@ type AssetView = {
   identifier: string;
 };
 
+type LiveSyncApiResponse = {
+  ok: boolean;
+  checkedAt: string;
+  source: "live" | "mock";
+  summary: {
+    kaseyaCount: number;
+    strevCount: number;
+    outOfSyncCount: number;
+    matchedCount: number;
+  };
+  kaseyaAssets: AssetView[];
+  strevAssets: AssetView[];
+  message?: string;
+};
+
 function normalize(value: string) {
   return value.trim().toLowerCase();
 }
 
 export function DashboardSyncPanel({ comparison }: DashboardSyncPanelProps) {
-  const kaseyaAssets = useMemo<AssetView[]>(
+  const fallbackKaseyaAssets = useMemo<AssetView[]>(
     () =>
       comparison.map((row) => ({
         id: row.kaseya.id,
@@ -42,16 +57,64 @@ export function DashboardSyncPanel({ comparison }: DashboardSyncPanelProps) {
     [comparison],
   );
 
-  const [strevAssets, setStrevAssets] = useState<AssetView[]>(
-    comparison
-      .filter((row) => row.revnueMatch)
-      .map((row) => ({
-        id: row.revnueMatch!.id,
-        name: row.revnueMatch!.name,
-        identifier: row.revnueMatch!.serialNumber || row.revnueMatch!.assetTag,
-      })),
+  const fallbackStrevAssets = useMemo<AssetView[]>(
+    () =>
+      comparison
+        .filter((row) => row.revnueMatch)
+        .map((row) => ({
+          id: row.revnueMatch!.id,
+          name: row.revnueMatch!.name,
+          identifier: row.revnueMatch!.serialNumber || row.revnueMatch!.assetTag,
+        })),
+    [comparison],
   );
+
+  const [kaseyaAssets, setKaseyaAssets] = useState<AssetView[]>(fallbackKaseyaAssets);
+  const [strevAssets, setStrevAssets] = useState<AssetView[]>(fallbackStrevAssets);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [source, setSource] = useState<"live" | "mock">("mock");
+  const [syncMessage, setSyncMessage] = useState<string>("");
+
+  const refreshFromApi = useCallback(async () => {
+    setIsRefreshing(true);
+
+    try {
+      const response = await fetch("/api/live-sync", { cache: "no-store" });
+      const data = (await response.json()) as LiveSyncApiResponse;
+
+      if (!data.ok || data.source !== "live") {
+        setSource(data.source ?? "mock");
+        setSyncMessage(data.message ?? "Live sync endpoint is unavailable. Showing current values.");
+        if (data.kaseyaAssets.length > 0) {
+          setKaseyaAssets(data.kaseyaAssets);
+        }
+        if (data.strevAssets.length > 0) {
+          setStrevAssets(data.strevAssets);
+        }
+        setLastSyncedAt(data.checkedAt ?? new Date().toISOString());
+        return;
+      }
+
+      setSource("live");
+      setSyncMessage(data.message ?? "");
+      setKaseyaAssets(data.kaseyaAssets);
+      setStrevAssets(data.strevAssets);
+      setLastSyncedAt(data.checkedAt);
+    } catch (error) {
+      setSource("mock");
+      setSyncMessage(error instanceof Error ? error.message : "Unable to refresh live sync now.");
+      setKaseyaAssets(fallbackKaseyaAssets);
+      setStrevAssets(fallbackStrevAssets);
+      setLastSyncedAt(new Date().toISOString());
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [fallbackKaseyaAssets, fallbackStrevAssets]);
+
+  useEffect(() => {
+    void refreshFromApi();
+  }, [refreshFromApi]);
 
   const strevByIdentifier = useMemo(() => {
     const map = new Map<string, AssetView>();
@@ -85,6 +148,12 @@ export function DashboardSyncPanel({ comparison }: DashboardSyncPanelProps) {
         </p>
         <p className="text-[var(--muted)]">{lastSyncedAt ? `Last sync: ${new Date(lastSyncedAt).toLocaleString()}` : "Last sync: not yet"}</p>
       </div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
+        <p>
+          API source: <span className="font-semibold text-[var(--text)]">{source === "live" ? "LIVE" : "MOCK"}</span>
+        </p>
+        {syncMessage ? <p>{syncMessage}</p> : null}
+      </div>
 
       <div className="grid gap-3 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
         <div className="rounded-lg border bg-[var(--surface-soft)] p-3">
@@ -101,18 +170,13 @@ export function DashboardSyncPanel({ comparison }: DashboardSyncPanelProps) {
 
         <button
           type="button"
-          className="mx-auto rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-contrast)]"
+          className="mx-auto rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-contrast)] disabled:cursor-not-allowed disabled:opacity-60"
           onClick={() => {
-            setStrevAssets(
-              kaseyaAssets.map((asset) => ({
-                ...asset,
-                id: `strev-${asset.id}`,
-              })),
-            );
-            setLastSyncedAt(new Date().toISOString());
+            void refreshFromApi();
           }}
+          disabled={isRefreshing}
         >
-          Sync -&gt;
+          {isRefreshing ? "Refreshing..." : "Refresh API -&gt;"}
         </button>
 
         <div className="rounded-lg border bg-[var(--surface-soft)] p-3">
