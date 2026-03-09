@@ -36,7 +36,8 @@
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--text);
-  --font-sans: var(--font-manrope);
+  --font-sans: var(--font-ubuntu-condensed);
+  --font-serif: var(--font-kreon);
   --font-mono: var(--font-jetbrains-mono);
 }
 
@@ -51,6 +52,16 @@ body {
   background: radial-gradient(circle at top right, var(--surface) 0%, var(--surface-soft) 42%, var(--bg) 100%);
   color: var(--text);
   min-height: 100%;
+  font-family: var(--font-ubuntu-condensed), sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-kreon), serif;
 }
 
 a {

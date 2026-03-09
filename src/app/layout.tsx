@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
-import { JetBrains_Mono, Manrope } from "next/font/google";
+import { JetBrains_Mono, Kreon, Ubuntu_Condensed } from "next/font/google";
 import { ThemePaletteProvider } from "@/components/theme/theme-palette-provider";
 import "./globals.css";
 
-const manrope = Manrope({
-  variable: "--font-manrope",
+const ubuntuCondensed = Ubuntu_Condensed({
+  variable: "--font-ubuntu-condensed",
+  subsets: ["latin"],
+  weight: "400",
+});
+
+const kreon = Kreon({
+  variable: "--font-kreon",
   subsets: ["latin"],
 });
 
@@ -26,7 +32,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${manrope.variable} ${jetbrainsMono.variable} antialiased`}>
+      <body className={`${ubuntuCondensed.variable} ${kreon.variable} ${jetbrainsMono.variable} antialiased`}>
         <ThemePaletteProvider>{children}</ThemePaletteProvider>
       </body>
     </html>
