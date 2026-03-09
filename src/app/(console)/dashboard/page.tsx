@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { DashboardSyncPanel } from "@/components/dashboard/dashboard-sync-panel";
 import { getAssetComparison, getTransferHistory } from "@/services/assetService";
 import { getSyncOverview } from "@/services/operationService";
 
@@ -20,6 +21,8 @@ export default async function DashboardPage() {
         title="Dashboard"
         description="Operational overview for asset sync transfer, autosync health, and queue posture."
       />
+
+      <DashboardSyncPanel comparison={comparison} />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card title="Kaseya Assets">

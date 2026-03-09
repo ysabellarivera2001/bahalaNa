@@ -2,6 +2,7 @@ import { Card } from "@/components/ui/card";
 import { DataTable } from "@/components/tables/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ConnectivityTestCard } from "@/components/transfers/connectivity-test-card";
 import { getDiagnostics, getSupportTickets } from "@/services/supportService";
 
 export default async function SupportPage() {
@@ -35,6 +36,8 @@ export default async function SupportPage() {
         </div>
         <p className="mt-2 text-xs text-[var(--muted)]">Checked at: {new Date(diag.checkedAt).toLocaleString()}</p>
       </Card>
+
+      <ConnectivityTestCard />
 
       <Card title="Support Tickets" subtitle="Local support log with future SMAX adapter hook">
         <DataTable
