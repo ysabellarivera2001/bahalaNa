@@ -14,6 +14,19 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function readEnv(key: string): string | undefined {
+  const value = process.env[key]?.trim();
+  return value ? value : undefined;
+}
+
+function withTopLimit(url: string): string {
+  const parsed = new URL(url);
+  if (!parsed.searchParams.has("$top")) {
+    parsed.searchParams.set("$top", "1");
+  }
+  return parsed.toString();
+}
+
 async function runStrevTest(): Promise<ConnectivityResult> {
   const url = process.env.REVNUE_TEST_URL;
   const token = process.env.REVNUE_TOKEN;
@@ -56,11 +69,12 @@ async function runStrevTest(): Promise<ConnectivityResult> {
 }
 
 async function runKaseyaTest(): Promise<ConnectivityResult> {
-  const tokenId = process.env.KASEYA_TOKEN_ID;
-  const tokenSecret = process.env.KASEYA_TOKEN_SECRET;
-  const kaseyaAssetUrl = process.env.KASEYA_ASSET_URL;
-  const kaseyaAssetsUrl = process.env.KASEYA_ASSETS_URL;
-  const kaseyaBaseUrl = process.env.KASEYA_BASE_URL;
+  const tokenId = readEnv("KASEYA_TOKEN_ID");
+  const tokenSecret = readEnv("KASEYA_TOKEN_SECRET");
+  const kaseyaAssetUrl = readEnv("KASEYA_ASSET_URL");
+  const kaseyaAssetsUrl = readEnv("KASEYA_ASSETS_URL");
+  const kaseyaBaseUrl = readEnv("KASEYA_BASE_URL");
+  const userAgent = readEnv("DEFAULT_USER_AGENT") ?? "vsax-kaseya-client/1.0";
 
   if (!tokenId || !tokenSecret) {
     return {
@@ -71,10 +85,8 @@ async function runKaseyaTest(): Promise<ConnectivityResult> {
     };
   }
 
-  const url =
-    kaseyaAssetUrl ??
-    kaseyaAssetsUrl ??
-    (kaseyaBaseUrl ? `${kaseyaBaseUrl.replace(/\/$/, "")}/api/v3/assets/?$top=1` : "");
+  const baseUrl = kaseyaBaseUrl ? `${kaseyaBaseUrl.replace(/\/$/, "")}/api/v3/assets/` : "";
+  const url = kaseyaAssetUrl ?? kaseyaAssetsUrl ?? baseUrl;
 
   if (!url) {
     return {
@@ -88,10 +100,12 @@ async function runKaseyaTest(): Promise<ConnectivityResult> {
   const basicAuth = Buffer.from(`${tokenId}:${tokenSecret}`).toString("base64");
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(withTopLimit(url), {
       method: "GET",
       headers: {
         Authorization: `Basic ${basicAuth}`,
+        Accept: "application/json",
+        "User-Agent": userAgent,
       },
       cache: "no-store",
     });
