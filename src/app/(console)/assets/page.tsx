@@ -5,8 +5,31 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { DataTable } from "@/components/tables/data-table";
-import { AssetCompareRow, getAssetComparison, getTransferHistory } from "@/services/assetService";
+import { KaseyaAsset, RevnueAsset } from "@/types";
 import { TransferRecord } from "@/types";
+
+type AssetCompareRow = {
+  kaseya: KaseyaAsset;
+  revnueMatch?: RevnueAsset;
+  action: "CREATE" | "UPDATE";
+};
+
+type LiveAsset = {
+  id: string;
+  name: string;
+  identifier: string;
+  modifiedDate?: string;
+  hasAssetInfo?: boolean;
+  assetInfoCount?: number;
+};
+
+type LiveSyncResponse = {
+  ok: boolean;
+  source: "live" | "mock";
+  checkedAt: string;
+  kaseyaAssets: LiveAsset[];
+  strevAssets: LiveAsset[];
+};
 
 export default function AssetsPage() {
   const [rows, setRows] = useState<AssetCompareRow[]>([]);
@@ -17,8 +40,43 @@ export default function AssetsPage() {
   const [transferMessage, setTransferMessage] = useState("");
 
   useEffect(() => {
-    void getAssetComparison().then(setRows);
-    void getTransferHistory().then(setHistory);
+    void (async () => {
+      const response = await fetch("/api/live-sync", { cache: "no-store" });
+      const data = (await response.json()) as LiveSyncResponse;
+      const strevByIdentifier = new Map<string, LiveAsset>(
+        data.strevAssets.map((asset) => [asset.identifier.trim().toLowerCase(), asset]),
+      );
+
+      const nextRows: AssetCompareRow[] = data.kaseyaAssets.map((asset) => {
+        const match = strevByIdentifier.get(asset.identifier.trim().toLowerCase());
+
+        return {
+          kaseya: {
+            id: asset.id,
+            name: asset.name,
+            identifier: asset.identifier,
+            modifiedDate: asset.modifiedDate ?? data.checkedAt,
+            detailSource: "unpaged",
+            hasAssetInfo: asset.hasAssetInfo ?? false,
+            assetInfoCount: asset.assetInfoCount ?? 0,
+          },
+          revnueMatch: match
+            ? {
+                id: match.id,
+                name: match.name,
+                serialNumber: match.identifier,
+                assetTag: match.identifier,
+                category: "Unknown",
+                lastSynced: match.modifiedDate ?? data.checkedAt,
+              }
+            : undefined,
+          action: match ? "UPDATE" : "CREATE",
+        };
+      });
+
+      setRows(nextRows);
+      setHistory([]);
+    })();
   }, []);
 
   const filtered = useMemo(() => {
@@ -47,7 +105,7 @@ export default function AssetsPage() {
     });
   }
 
-  function runMockTransfer() {
+  function runTransferPreview() {
     if (selectedIdentifiers.length === 0) {
       setTransferMessage("Select at least one asset before running transfer.");
       return;
@@ -57,12 +115,12 @@ export default function AssetsPage() {
     const now = new Date().toISOString();
 
     const newRecords: TransferRecord[] = selectedRows.map((row, index) => ({
-      id: `t-mock-${Date.now()}-${index}`,
+      id: `t-local-${Date.now()}-${index}`,
       kaseyaIdentifier: row.kaseya.identifier,
       action: row.action,
       status: row.kaseya.hasAssetInfo ? "success" : "partial",
       message: row.kaseya.hasAssetInfo
-        ? `${row.action} prepared and queued in mock mode.`
+        ? `${row.action} prepared and queued.`
         : `${row.action} queued with partial detail payload.`,
       timestamp: now,
       mappedNonEmptyCount: row.kaseya.hasAssetInfo ? Math.max(4, row.kaseya.assetInfoCount) : 3,
@@ -70,7 +128,7 @@ export default function AssetsPage() {
 
     setHistory((current) => [...newRecords, ...current]);
     setSelectedIdentifiers([]);
-    setTransferMessage(`Mock transfer executed for ${newRecords.length} asset(s).`);
+    setTransferMessage(`Transfer preview generated for ${newRecords.length} asset(s).`);
   }
 
   return (
@@ -97,11 +155,11 @@ export default function AssetsPage() {
             Show only records not found in Strev
           </label>
           <button
-            onClick={runMockTransfer}
+            onClick={runTransferPreview}
             disabled={selectedCount === 0}
             className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--accent-contrast)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Transfer Selected (Mock) {selectedCount > 0 ? `(${selectedCount})` : ""}
+            Transfer Selected {selectedCount > 0 ? `(${selectedCount})` : ""}
           </button>
           <p className="text-sm text-[var(--muted)]">{transferMessage}</p>
         </div>

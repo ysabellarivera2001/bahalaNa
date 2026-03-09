@@ -29,7 +29,7 @@ export default async function TransfersPage() {
         </Card>
       </div>
 
-      <Card title="Transfer History" subtitle="Most recent outcomes first based on current mock dataset order">
+      <Card title="Transfer History" subtitle="Most recent outcomes first">
         <DataTable
           rows={history}
           columns={[

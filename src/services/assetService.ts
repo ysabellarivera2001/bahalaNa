@@ -1,4 +1,5 @@
-import { kaseyaAssets, revnueAssets, transferHistory } from "@/data/mockData";
+import "server-only";
+import { fetchKaseyaAssets, fetchStrevAssets } from "@/lib/live-sync-data";
 import { KaseyaAsset, RevnueAsset, TransferAction, TransferRecord } from "@/types";
 
 export interface AssetCompareRow {
@@ -7,15 +8,30 @@ export interface AssetCompareRow {
   action: TransferAction;
 }
 
-function pause(ms = 180): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export async function getAssetComparison(): Promise<AssetCompareRow[]> {
-  await pause();
+  const [kaseyaAssets, revnueAssets] = await Promise.all([fetchKaseyaAssets(), fetchStrevAssets()]);
 
-  return kaseyaAssets.map((kaseya) => {
-    const match = revnueAssets.find(
+  const mappedKaseya: KaseyaAsset[] = kaseyaAssets.map((asset) => ({
+    id: asset.id,
+    name: asset.name,
+    identifier: asset.identifier,
+    modifiedDate: asset.modifiedDate ?? new Date(0).toISOString(),
+    detailSource: "unpaged",
+    hasAssetInfo: asset.hasAssetInfo ?? false,
+    assetInfoCount: asset.assetInfoCount ?? 0,
+  }));
+
+  const mappedRevnue: RevnueAsset[] = revnueAssets.map((asset) => ({
+    id: asset.id,
+    name: asset.name,
+    serialNumber: asset.identifier,
+    assetTag: asset.identifier,
+    category: "Unknown",
+    lastSynced: asset.modifiedDate ?? new Date().toISOString(),
+  }));
+
+  return mappedKaseya.map((kaseya) => {
+    const match = mappedRevnue.find(
       (revnue) =>
         revnue.serialNumber === kaseya.identifier ||
         revnue.assetTag === kaseya.identifier,
@@ -30,6 +46,5 @@ export async function getAssetComparison(): Promise<AssetCompareRow[]> {
 }
 
 export async function getTransferHistory(): Promise<TransferRecord[]> {
-  await pause();
-  return transferHistory;
+  return [];
 }

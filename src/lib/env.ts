@@ -1,4 +1,3 @@
-import { runtimeSettings } from "@/data/mockData";
 import { RuntimeSetting } from "@/types";
 
 const envKeys = [
@@ -8,6 +7,7 @@ const envKeys = [
   "KASEYA_BASE_URL",
   "KASEYA_ASSET_URL",
   "KASEYA_ASSETS_URL",
+  "DEFAULT_KASEYA_ASSETS_URL",
   "DEFAULT_USER_AGENT",
   "KASEYA_TOKEN_ID",
   "KASEYA_TOKEN_SECRET",
@@ -44,5 +44,5 @@ export function readSafeSettings(): RuntimeSetting[] {
     return acc;
   }, []);
 
-  return fromEnv.length > 0 ? fromEnv : runtimeSettings;
+  return fromEnv;
 }

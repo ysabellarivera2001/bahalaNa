@@ -44,7 +44,7 @@ export default function SyncStatusPage() {
         </Card>
       </div>
 
-      <Card title="Controls" subtitle="Operational controls mapped to /api/sync/reconcile and /api/sync/dry-run (mock)">
+      <Card title="Controls" subtitle="Operational controls mapped to /api/sync/reconcile and /api/sync/dry-run">
         <div className="flex flex-wrap items-center gap-3">
           <button
             className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--accent-contrast)]"

@@ -16,7 +16,7 @@ export function TopBar({ mode }: TopBarProps) {
     <header className="flex items-center justify-between rounded-xl border bg-[var(--surface)] px-4 py-3">
       <div>
         <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">Operations</p>
-        <p className="text-base font-semibold">Kaseya -&gt; Strev/Revnue Sync</p>
+        <p className="text-base font-semibold">Kaseya {"->"} Strev/Revnue Sync</p>
       </div>
       <div className={`rounded-full px-3 py-1 text-xs font-bold ${modeClass}`}>Autosync: {mode}</div>
     </header>

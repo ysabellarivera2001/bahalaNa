@@ -73,6 +73,7 @@ async function runKaseyaTest(): Promise<ConnectivityResult> {
   const tokenSecret = readEnv("KASEYA_TOKEN_SECRET");
   const kaseyaAssetUrl = readEnv("KASEYA_ASSET_URL");
   const kaseyaAssetsUrl = readEnv("KASEYA_ASSETS_URL");
+  const defaultKaseyaAssetsUrl = readEnv("DEFAULT_KASEYA_ASSETS_URL");
   const kaseyaBaseUrl = readEnv("KASEYA_BASE_URL");
   const userAgent = readEnv("DEFAULT_USER_AGENT") ?? "vsax-kaseya-client/1.0";
 
@@ -86,13 +87,14 @@ async function runKaseyaTest(): Promise<ConnectivityResult> {
   }
 
   const baseUrl = kaseyaBaseUrl ? `${kaseyaBaseUrl.replace(/\/$/, "")}/api/v3/assets/` : "";
-  const url = kaseyaAssetUrl ?? kaseyaAssetsUrl ?? baseUrl;
+  const url = kaseyaAssetUrl ?? kaseyaAssetsUrl ?? defaultKaseyaAssetsUrl ?? baseUrl;
 
   if (!url) {
     return {
       service: "kaseya",
       ok: false,
-      message: "Missing KASEYA_ASSET_URL, KASEYA_ASSETS_URL, or KASEYA_BASE_URL in environment settings.",
+      message:
+        "Missing KASEYA_ASSET_URL, KASEYA_ASSETS_URL, DEFAULT_KASEYA_ASSETS_URL, or KASEYA_BASE_URL in environment settings.",
       checkedAt: nowIso(),
     };
   }

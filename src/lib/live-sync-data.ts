@@ -1,0 +1,237 @@
+import "server-only";
+
+type RawRecord = Record<string, unknown>;
+
+export type LiveAsset = {
+  id: string;
+  name: string;
+  identifier: string;
+  modifiedDate?: string;
+  hasAssetInfo?: boolean;
+  assetInfoCount?: number;
+};
+
+function readEnv(key: string): string | undefined {
+  const value = process.env[key]?.trim();
+  return value ? value : undefined;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function toObjectRecord(value: unknown): RawRecord {
+  if (value && typeof value === "object") {
+    return value as RawRecord;
+  }
+  return {};
+}
+
+function toText(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number") {
+    return String(value);
+  }
+  return "";
+}
+
+function toIsoDate(value: unknown): string {
+  const text = toText(value);
+  if (!text) {
+    return new Date(0).toISOString();
+  }
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? new Date(0).toISOString() : parsed.toISOString();
+}
+
+function pickArrayFromObject(payload: RawRecord): unknown[] {
+  const candidates = [
+    payload.items,
+    payload.data,
+    payload.Data,
+    payload.results,
+    payload.result,
+    payload.assets,
+    payload.Assets,
+    payload.value,
+    payload.Rows,
+    payload.Result,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+  }
+
+  return [];
+}
+
+function withTopLimit(url: string): string {
+  const parsed = new URL(url);
+  if (!parsed.searchParams.has("$top")) {
+    parsed.searchParams.set("$top", "100");
+  }
+  return parsed.toString();
+}
+
+function withCompany(url: string, company?: string): string {
+  const parsed = new URL(url);
+  if (company && !parsed.searchParams.has("company")) {
+    parsed.searchParams.set("company", company);
+  }
+  return parsed.toString();
+}
+
+function findAssetInfoIdentifier(assetInfo: unknown): string {
+  if (!Array.isArray(assetInfo)) {
+    return "";
+  }
+
+  const preferredKeys = ["Serial Number", "SerialNumber", "Serial", "Asset Tag", "AssetTag", "Service Tag"];
+
+  for (const entry of assetInfo) {
+    const item = toObjectRecord(entry);
+    const categoryData = toObjectRecord(item.CategoryData);
+
+    for (const key of preferredKeys) {
+      const value = toText(categoryData[key]);
+      if (value) {
+        return value;
+      }
+    }
+  }
+
+  return "";
+}
+
+function mapKaseyaAssets(rawAssets: unknown[]): LiveAsset[] {
+  return rawAssets
+    .map((entry) => {
+      const item = toObjectRecord(entry);
+      const assetInfo = asArray(item.AssetInfo);
+      const id = toText(item.Id || item.id || item.AssetId || item.AssetID || item.AssetGuid || item.Identifier || item.identifier);
+      const name = toText(item.Name || item.name || item.AssetName || item.DeviceName);
+      const identifier = toText(
+        findAssetInfoIdentifier(assetInfo) ||
+          item.Identifier ||
+          item.identifier ||
+          item.SerialNumber ||
+          item.serial_number ||
+          item.asset_tag,
+      );
+      const modifiedDate = toIsoDate(item.ModifiedDate || item.Modified || item.updated_at || item.LastSeenAt || item.LastSeenOnline);
+
+      if (!id || !name || !identifier) {
+        return null;
+      }
+
+      return {
+        id,
+        name,
+        identifier,
+        modifiedDate,
+        hasAssetInfo: assetInfo.length > 0,
+        assetInfoCount: assetInfo.length,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .sort((a, b) => (a.modifiedDate ?? "") < (b.modifiedDate ?? "") ? 1 : -1);
+}
+
+function mapStrevAssets(rawAssets: unknown[]): LiveAsset[] {
+  return rawAssets
+    .map((entry) => {
+      const item = toObjectRecord(entry);
+      const id = toText(item.id || item.Id || item.asset_id);
+      const name = toText(item.name || item.Name || item.asset_name);
+      const serial = toText(item.serial_number || item.serialNumber || item.SerialNumber || item.Identifier);
+      const tag = toText(item.asset_tag || item.assetTag || item.AssetTag);
+      const modifiedDate = toIsoDate(item.modified_date || item.modifiedDate || item.updated_at);
+      const identifier = serial || tag;
+
+      if (!id || !name || !identifier) {
+        return null;
+      }
+
+      return { id, name, identifier, modifiedDate };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .sort((a, b) => (a.modifiedDate ?? "") < (b.modifiedDate ?? "") ? 1 : -1);
+}
+
+export async function fetchKaseyaAssets(): Promise<LiveAsset[]> {
+  const tokenId = readEnv("KASEYA_TOKEN_ID");
+  const tokenSecret = readEnv("KASEYA_TOKEN_SECRET");
+  const kaseyaAssetUrl = readEnv("KASEYA_ASSET_URL");
+  const kaseyaAssetsUrl = readEnv("KASEYA_ASSETS_URL");
+  const defaultKaseyaAssetsUrl = readEnv("DEFAULT_KASEYA_ASSETS_URL");
+  const kaseyaBaseUrl = readEnv("KASEYA_BASE_URL");
+  const userAgent = readEnv("DEFAULT_USER_AGENT") ?? "vsax-kaseya-client/1.0";
+
+  if (!tokenId || !tokenSecret) {
+    throw new Error("Missing KASEYA_TOKEN_ID or KASEYA_TOKEN_SECRET.");
+  }
+
+  const baseUrl = kaseyaBaseUrl ? `${kaseyaBaseUrl.replace(/\/$/, "")}/api/v3/assets/` : "";
+  const url = kaseyaAssetUrl ?? kaseyaAssetsUrl ?? defaultKaseyaAssetsUrl ?? baseUrl;
+
+  if (!url) {
+    throw new Error(
+      "Missing KASEYA_ASSET_URL, KASEYA_ASSETS_URL, DEFAULT_KASEYA_ASSETS_URL, or KASEYA_BASE_URL.",
+    );
+  }
+
+  const basicAuth = Buffer.from(`${tokenId}:${tokenSecret}`).toString("base64");
+  const response = await fetch(withTopLimit(url), {
+    method: "GET",
+    headers: {
+      Authorization: `Basic ${basicAuth}`,
+      Accept: "application/json",
+      "User-Agent": userAgent,
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Kaseya assets endpoint returned HTTP ${response.status}.`);
+  }
+
+  const json = (await response.json()) as unknown;
+  const assets = Array.isArray(json) ? asArray(json) : pickArrayFromObject(toObjectRecord(json));
+  return mapKaseyaAssets(assets);
+}
+
+export async function fetchStrevAssets(): Promise<LiveAsset[]> {
+  const token = readEnv("REVNUE_TOKEN");
+  const baseAssetUrl = readEnv("REVNUE_ASSET_URL");
+  const company = readEnv("REVNUE_COMPANY");
+
+  if (!token) {
+    throw new Error("Missing REVNUE_TOKEN.");
+  }
+
+  if (!baseAssetUrl) {
+    throw new Error("Missing REVNUE_ASSET_URL.");
+  }
+
+  const url = withCompany(baseAssetUrl, company);
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Strev assets endpoint returned HTTP ${response.status}.`);
+  }
+
+  const json = (await response.json()) as unknown;
+  const assets = Array.isArray(json) ? asArray(json) : pickArrayFromObject(toObjectRecord(json));
+  return mapStrevAssets(assets);
+}

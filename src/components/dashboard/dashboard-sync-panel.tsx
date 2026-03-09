@@ -159,12 +159,16 @@ export function DashboardSyncPanel({ comparison }: DashboardSyncPanelProps) {
         <div className="rounded-lg border bg-[var(--surface-soft)] p-3">
           <h4 className="text-sm font-semibold">Kaseya Assets</h4>
           <div className="mt-2 space-y-2">
-            {previewRows.map((asset) => (
-              <div key={asset.id} className="rounded-md border bg-[var(--surface)] px-2 py-1.5 text-sm">
-                <p className="font-semibold">{asset.name}</p>
-                <p className="font-mono text-xs text-[var(--muted)]">{asset.identifier}</p>
-              </div>
-            ))}
+            {previewRows.length > 0 ? (
+              previewRows.map((asset) => (
+                <div key={asset.id} className="rounded-md border bg-[var(--surface)] px-2 py-1.5 text-sm">
+                  <p className="font-semibold">{asset.name}</p>
+                  <p className="font-mono text-xs text-[var(--muted)]">{asset.identifier}</p>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-[var(--muted)]">No Kaseya assets available.</p>
+            )}
           </div>
         </div>
 
@@ -176,32 +180,36 @@ export function DashboardSyncPanel({ comparison }: DashboardSyncPanelProps) {
           }}
           disabled={isRefreshing}
         >
-          {isRefreshing ? "Refreshing..." : "Refresh API -&gt;"}
+          {isRefreshing ? "Refreshing..." : "Refresh API ->"}
         </button>
 
         <div className="rounded-lg border bg-[var(--surface-soft)] p-3">
           <h4 className="text-sm font-semibold">Strev Assets</h4>
           <div className="mt-2 space-y-2">
-            {previewRows.map((asset) => {
-              const right = strevByIdentifier.get(normalize(asset.identifier));
-              const synced = !!right && normalize(right.name) === normalize(asset.name);
+            {previewRows.length > 0 ? (
+              previewRows.map((asset) => {
+                const right = strevByIdentifier.get(normalize(asset.identifier));
+                const synced = !!right && normalize(right.name) === normalize(asset.name);
 
-              return (
-                <div key={asset.id} className="rounded-md border bg-[var(--surface)] px-2 py-1.5 text-sm">
-                  {right ? (
-                    <>
-                      <p className="font-semibold">{right.name}</p>
-                      <p className="font-mono text-xs text-[var(--muted)]">{right.identifier}</p>
-                    </>
-                  ) : (
-                    <p className="text-xs text-[var(--muted)]">No matching asset</p>
-                  )}
-                  <p className={`mt-1 text-xs font-semibold ${synced ? "text-emerald-700" : "text-amber-700"}`}>
-                    {synced ? "Synced" : "Out of sync"}
-                  </p>
-                </div>
-              );
-            })}
+                return (
+                  <div key={asset.id} className="rounded-md border bg-[var(--surface)] px-2 py-1.5 text-sm">
+                    {right ? (
+                      <>
+                        <p className="font-semibold">{right.name}</p>
+                        <p className="font-mono text-xs text-[var(--muted)]">{right.identifier}</p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-[var(--muted)]">No matching asset</p>
+                    )}
+                    <p className={`mt-1 text-xs font-semibold ${synced ? "text-emerald-700" : "text-amber-700"}`}>
+                      {synced ? "Synced" : "Out of sync"}
+                    </p>
+                  </div>
+                );
+              })
+            ) : (
+              <p className="text-xs text-[var(--muted)]">No Strev assets available.</p>
+            )}
           </div>
         </div>
       </div>
