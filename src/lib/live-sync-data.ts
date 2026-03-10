@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchKaseya, getKaseyaAssetsUrl } from "@/lib/kaseya-request";
 
 type RawRecord = Record<string, unknown>;
 
@@ -10,6 +11,69 @@ export type LiveAsset = {
   hasAssetInfo?: boolean;
   assetInfoCount?: number;
 };
+
+export type LiveAssetSnapshot = {
+  kaseyaAssets: LiveAsset[];
+  strevAssets: LiveAsset[];
+  source: "live" | "mock";
+  message?: string;
+};
+
+const mockKaseyaAssets: LiveAsset[] = [
+  {
+    id: "kas-1001",
+    name: "HQ-Laptop-001",
+    identifier: "SN-HQ-001",
+    modifiedDate: "2026-03-09T09:15:00.000Z",
+    hasAssetInfo: true,
+    assetInfoCount: 6,
+  },
+  {
+    id: "kas-1002",
+    name: "HQ-Laptop-002",
+    identifier: "SN-HQ-002",
+    modifiedDate: "2026-03-09T10:00:00.000Z",
+    hasAssetInfo: true,
+    assetInfoCount: 5,
+  },
+  {
+    id: "kas-1003",
+    name: "Branch-Printer-007",
+    identifier: "PR-007",
+    modifiedDate: "2026-03-08T13:30:00.000Z",
+    hasAssetInfo: false,
+    assetInfoCount: 0,
+  },
+  {
+    id: "kas-1004",
+    name: "Warehouse-Scanner-12",
+    identifier: "WH-SCN-12",
+    modifiedDate: "2026-03-07T08:45:00.000Z",
+    hasAssetInfo: true,
+    assetInfoCount: 4,
+  },
+];
+
+const mockStrevAssets: LiveAsset[] = [
+  {
+    id: "str-2001",
+    name: "HQ-Laptop-001",
+    identifier: "SN-HQ-001",
+    modifiedDate: "2026-03-09T09:20:00.000Z",
+  },
+  {
+    id: "str-2002",
+    name: "HQ-Laptop-002-Renamed",
+    identifier: "SN-HQ-002",
+    modifiedDate: "2026-03-09T10:10:00.000Z",
+  },
+  {
+    id: "str-2003",
+    name: "Warehouse-Scanner-12",
+    identifier: "WH-SCN-12",
+    modifiedDate: "2026-03-07T08:50:00.000Z",
+  },
+];
 
 function readEnv(key: string): string | undefined {
   const value = process.env[key]?.trim();
@@ -163,20 +227,7 @@ function mapStrevAssets(rawAssets: unknown[]): LiveAsset[] {
 }
 
 export async function fetchKaseyaAssets(): Promise<LiveAsset[]> {
-  const tokenId = readEnv("KASEYA_TOKEN_ID");
-  const tokenSecret = readEnv("KASEYA_TOKEN_SECRET");
-  const kaseyaAssetUrl = readEnv("KASEYA_ASSET_URL");
-  const kaseyaAssetsUrl = readEnv("KASEYA_ASSETS_URL");
-  const defaultKaseyaAssetsUrl = readEnv("DEFAULT_KASEYA_ASSETS_URL");
-  const kaseyaBaseUrl = readEnv("KASEYA_BASE_URL");
-  const userAgent = readEnv("DEFAULT_USER_AGENT") ?? "vsax-kaseya-client/1.0";
-
-  if (!tokenId || !tokenSecret) {
-    throw new Error("Missing KASEYA_TOKEN_ID or KASEYA_TOKEN_SECRET.");
-  }
-
-  const baseUrl = kaseyaBaseUrl ? `${kaseyaBaseUrl.replace(/\/$/, "")}/api/v3/assets/` : "";
-  const url = kaseyaAssetUrl ?? kaseyaAssetsUrl ?? defaultKaseyaAssetsUrl ?? baseUrl;
+  const url = getKaseyaAssetsUrl();
 
   if (!url) {
     throw new Error(
@@ -184,15 +235,8 @@ export async function fetchKaseyaAssets(): Promise<LiveAsset[]> {
     );
   }
 
-  const basicAuth = Buffer.from(`${tokenId}:${tokenSecret}`).toString("base64");
-  const response = await fetch(withTopLimit(url), {
+  const response = await fetchKaseya(withTopLimit(url), {
     method: "GET",
-    headers: {
-      Authorization: `Basic ${basicAuth}`,
-      Accept: "application/json",
-      "User-Agent": userAgent,
-    },
-    cache: "no-store",
   });
 
   if (!response.ok) {
@@ -234,4 +278,31 @@ export async function fetchStrevAssets(): Promise<LiveAsset[]> {
   const json = (await response.json()) as unknown;
   const assets = Array.isArray(json) ? asArray(json) : pickArrayFromObject(toObjectRecord(json));
   return mapStrevAssets(assets);
+}
+
+export function getMockKaseyaAssets(): LiveAsset[] {
+  return mockKaseyaAssets.map((asset) => ({ ...asset }));
+}
+
+export function getMockStrevAssets(): LiveAsset[] {
+  return mockStrevAssets.map((asset) => ({ ...asset }));
+}
+
+export async function loadLiveAssetSnapshot(): Promise<LiveAssetSnapshot> {
+  try {
+    const [kaseyaAssets, strevAssets] = await Promise.all([fetchKaseyaAssets(), fetchStrevAssets()]);
+
+    return {
+      kaseyaAssets,
+      strevAssets,
+      source: "live",
+    };
+  } catch (error) {
+    return {
+      kaseyaAssets: getMockKaseyaAssets(),
+      strevAssets: getMockStrevAssets(),
+      source: "mock",
+      message: error instanceof Error ? error.message : "Unexpected error while loading live sync assets.",
+    };
+  }
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchKaseya, getKaseyaAssetsUrl } from "@/lib/kaseya-request";
 import { DiagnosticResult, SupportTicket } from "@/types";
 
 function readEnv(key: string): string | undefined {
@@ -12,6 +13,20 @@ function withTopLimit(url: string): string {
     parsed.searchParams.set("$top", "1");
   }
   return parsed.toString();
+}
+
+async function probeHost(url: string): Promise<boolean> {
+  const origin = new URL(url).origin;
+
+  try {
+    const response = await fetch(origin, {
+      method: "GET",
+      cache: "no-store",
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 async function checkStrev(): Promise<boolean> {
@@ -39,38 +54,24 @@ async function checkStrev(): Promise<boolean> {
 async function checkKaseya(): Promise<boolean> {
   const tokenId = readEnv("KASEYA_TOKEN_ID");
   const tokenSecret = readEnv("KASEYA_TOKEN_SECRET");
-  const kaseyaAssetUrl = readEnv("KASEYA_ASSET_URL");
-  const kaseyaAssetsUrl = readEnv("KASEYA_ASSETS_URL");
-  const defaultKaseyaAssetsUrl = readEnv("DEFAULT_KASEYA_ASSETS_URL");
-  const kaseyaBaseUrl = readEnv("KASEYA_BASE_URL");
-  const userAgent = readEnv("DEFAULT_USER_AGENT") ?? "vsax-kaseya-client/1.0";
 
   if (!tokenId || !tokenSecret) {
     return false;
   }
 
-  const baseUrl = kaseyaBaseUrl ? `${kaseyaBaseUrl.replace(/\/$/, "")}/api/v3/assets/` : "";
-  const url = kaseyaAssetUrl ?? kaseyaAssetsUrl ?? defaultKaseyaAssetsUrl ?? baseUrl;
+  const url = getKaseyaAssetsUrl();
 
   if (!url) {
     return false;
   }
 
-  const basicAuth = Buffer.from(`${tokenId}:${tokenSecret}`).toString("base64");
-
   try {
-    const response = await fetch(withTopLimit(url), {
+    const response = await fetchKaseya(withTopLimit(url), {
       method: "GET",
-      headers: {
-        Authorization: `Basic ${basicAuth}`,
-        Accept: "application/json",
-        "User-Agent": userAgent,
-      },
-      cache: "no-store",
     });
     return response.ok;
   } catch {
-    return false;
+    return probeHost(url);
   }
 }
 

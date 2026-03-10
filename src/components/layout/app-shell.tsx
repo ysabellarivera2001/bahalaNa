@@ -1,14 +1,14 @@
 import { ReactNode } from "react";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { TopBar } from "@/components/layout/top-bar";
-import { getSyncOverview } from "@/services/operationService";
+import { getServerSyncOverview } from "@/services/operationServerService";
 
 interface AppShellProps {
   children: ReactNode;
 }
 
 export async function AppShell({ children }: AppShellProps) {
-  const overview = await getSyncOverview();
+  const overview = await getServerSyncOverview();
 
   return (
     <div className="min-h-screen bg-transparent">

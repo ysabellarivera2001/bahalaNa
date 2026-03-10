@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchKaseya, getKaseyaAssetsUrl } from "@/lib/kaseya-request";
 
 type ServiceTarget = "strev" | "kaseya";
 
@@ -9,6 +10,21 @@ type ConnectivityResult = {
   message: string;
   checkedAt: string;
 };
+
+async function probeHost(url: string): Promise<{ ok: boolean; statusCode?: number }> {
+  const origin = new URL(url).origin;
+
+  try {
+    const response = await fetch(origin, {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    return { ok: response.ok, statusCode: response.status };
+  } catch {
+    return { ok: false };
+  }
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -69,15 +85,7 @@ async function runStrevTest(): Promise<ConnectivityResult> {
 }
 
 async function runKaseyaTest(): Promise<ConnectivityResult> {
-  const tokenId = readEnv("KASEYA_TOKEN_ID");
-  const tokenSecret = readEnv("KASEYA_TOKEN_SECRET");
-  const kaseyaAssetUrl = readEnv("KASEYA_ASSET_URL");
-  const kaseyaAssetsUrl = readEnv("KASEYA_ASSETS_URL");
-  const defaultKaseyaAssetsUrl = readEnv("DEFAULT_KASEYA_ASSETS_URL");
-  const kaseyaBaseUrl = readEnv("KASEYA_BASE_URL");
-  const userAgent = readEnv("DEFAULT_USER_AGENT") ?? "vsax-kaseya-client/1.0";
-
-  if (!tokenId || !tokenSecret) {
+  if (!readEnv("KASEYA_TOKEN_ID") || !readEnv("KASEYA_TOKEN_SECRET")) {
     return {
       service: "kaseya",
       ok: false,
@@ -86,8 +94,7 @@ async function runKaseyaTest(): Promise<ConnectivityResult> {
     };
   }
 
-  const baseUrl = kaseyaBaseUrl ? `${kaseyaBaseUrl.replace(/\/$/, "")}/api/v3/assets/` : "";
-  const url = kaseyaAssetUrl ?? kaseyaAssetsUrl ?? defaultKaseyaAssetsUrl ?? baseUrl;
+  const url = getKaseyaAssetsUrl();
 
   if (!url) {
     return {
@@ -99,17 +106,9 @@ async function runKaseyaTest(): Promise<ConnectivityResult> {
     };
   }
 
-  const basicAuth = Buffer.from(`${tokenId}:${tokenSecret}`).toString("base64");
-
   try {
-    const response = await fetch(withTopLimit(url), {
+    const response = await fetchKaseya(withTopLimit(url), {
       method: "GET",
-      headers: {
-        Authorization: `Basic ${basicAuth}`,
-        Accept: "application/json",
-        "User-Agent": userAgent,
-      },
-      cache: "no-store",
     });
 
     return {
@@ -118,14 +117,21 @@ async function runKaseyaTest(): Promise<ConnectivityResult> {
       statusCode: response.status,
       message: response.ok
         ? "Connected to Kaseya assets endpoint successfully."
-        : `Kaseya assets endpoint returned HTTP ${response.status}.`,
+        : `Kaseya host is reachable, but the assets endpoint returned HTTP ${response.status}. Verify tenant API health, route availability, and token scope.`,
       checkedAt: nowIso(),
     };
   } catch (error) {
+    const hostProbe = await probeHost(url);
+
     return {
       service: "kaseya",
       ok: false,
-      message: error instanceof Error ? error.message : "Unexpected error while testing Kaseya API.",
+      statusCode: hostProbe.statusCode,
+      message: hostProbe.ok
+        ? `Kaseya host is reachable, but the API request failed. ${error instanceof Error ? error.message : "Unexpected error while testing Kaseya API."}`
+        : error instanceof Error
+          ? error.message
+          : "Unexpected error while testing Kaseya API.",
       checkedAt: nowIso(),
     };
   }

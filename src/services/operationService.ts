@@ -1,7 +1,22 @@
 import { SyncEvent, SyncOverview } from "@/types";
 
-function normalize(value: string): string {
-  return value.trim().toLowerCase();
+function getApiBaseUrl(): string {
+  if (typeof window !== "undefined") {
+    return "";
+  }
+
+  const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (explicit) {
+    return explicit.replace(/\/$/, "");
+  }
+
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  if (vercelUrl) {
+    return `https://${vercelUrl.replace(/\/$/, "")}`;
+  }
+
+  const port = process.env.PORT?.trim() || "3000";
+  return `http://localhost:${port}`;
 }
 
 type LiveAsset = {
@@ -26,102 +41,30 @@ type LiveSyncResponse = {
   message?: string;
 };
 
-function getApiBaseUrl(): string {
-  if (typeof window !== "undefined") {
-    return "";
-  }
-
-  const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (explicit) {
-    return explicit.replace(/\/$/, "");
-  }
-
-  const vercelUrl = process.env.VERCEL_URL?.trim();
-  if (vercelUrl) {
-    return `https://${vercelUrl.replace(/\/$/, "")}`;
-  }
-
-  const port = process.env.PORT?.trim() || "3000";
-  return `http://localhost:${port}`;
-}
-
 async function fetchLiveSync(): Promise<LiveSyncResponse> {
   const base = getApiBaseUrl();
   const response = await fetch(`${base}/api/live-sync`, { cache: "no-store" });
   return (await response.json()) as LiveSyncResponse;
 }
 
-async function collectSyncState() {
-  const data = await fetchLiveSync();
-  if (!data.ok || data.source !== "live") {
-    throw new Error(data.message ?? "Live sync endpoint unavailable.");
-  }
-
-  const strevByIdentifier = new Map(data.strevAssets.map((asset) => [normalize(asset.identifier), asset]));
-
-  const events: SyncEvent[] = [];
-  let failedEvents = 0;
-  let partialEvents = 0;
-  let matchedCount = 0;
-
-  for (const asset of data.kaseyaAssets) {
-    const match = strevByIdentifier.get(normalize(asset.identifier));
-
-    if (!match) {
-      failedEvents += 1;
-      events.push({
-        id: `live-missing-${asset.id}`,
-        timestamp: asset.modifiedDate ?? new Date().toISOString(),
-        identifier: asset.identifier,
-        eventType: "create",
-        status: "failed",
-        attempts: 1,
-        detail: "No matching Strev asset for identifier.",
-      });
-      continue;
-    }
-
-    if (normalize(match.name) !== normalize(asset.name)) {
-      partialEvents += 1;
-      events.push({
-        id: `live-mismatch-${asset.id}`,
-        timestamp: asset.modifiedDate ?? new Date().toISOString(),
-        identifier: asset.identifier,
-        eventType: "update",
-        status: "partial",
-        attempts: 1,
-        detail: `Name mismatch: Kaseya "${asset.name}" vs Strev "${match.name}".`,
-      });
-      continue;
-    }
-
-    matchedCount += 1;
-  }
-
-  return {
-    kaseyaCount: data.kaseyaAssets.length,
-    events: events.slice(0, 100),
-    failedEvents,
-    partialEvents,
-    matchedCount,
-  };
-}
-
 export async function getSyncOverview(): Promise<SyncOverview> {
   try {
-    const state = await collectSyncState();
-    const total = state.kaseyaCount;
-    const successRate = total === 0 ? 0 : Number(((state.matchedCount / total) * 100).toFixed(1));
+    const data = await fetchLiveSync();
+    if (!data.ok || data.source !== "live") {
+      throw new Error(data.message ?? "Live sync endpoint unavailable.");
+    }
+
+    const failedEvents = data.summary.outOfSyncCount - (data.kaseyaAssets.length - data.summary.matchedCount - data.summary.outOfSyncCount);
 
     return {
-      health: state.failedEvents > 0 ? "degraded" : "healthy",
+      health: data.summary.outOfSyncCount > 0 ? "degraded" : "healthy",
       mode: "LIVE",
-      queueDepth: state.failedEvents + state.partialEvents,
-      successRate,
-      workerHeartbeat: new Date().toISOString(),
-      lastReconcile: new Date().toISOString(),
-      failedEvents: state.failedEvents,
-      partialEvents: state.partialEvents,
+      queueDepth: data.summary.outOfSyncCount,
+      successRate: data.summary.kaseyaCount === 0 ? 0 : Number(((data.summary.matchedCount / data.summary.kaseyaCount) * 100).toFixed(1)),
+      workerHeartbeat: data.checkedAt,
+      lastReconcile: data.checkedAt,
+      failedEvents: Math.max(failedEvents, 0),
+      partialEvents: Math.max(data.summary.outOfSyncCount - Math.max(failedEvents, 0), 0),
     };
   } catch {
     return {
@@ -139,8 +82,43 @@ export async function getSyncOverview(): Promise<SyncOverview> {
 
 export async function getSyncEvents(): Promise<SyncEvent[]> {
   try {
-    const state = await collectSyncState();
-    return state.events;
+    const data = await fetchLiveSync();
+    if (!data.ok || data.source !== "live") {
+      return [];
+    }
+
+    const strevByIdentifier = new Map(data.strevAssets.map((asset) => [asset.identifier.trim().toLowerCase(), asset]));
+    const events: SyncEvent[] = [];
+
+    for (const asset of data.kaseyaAssets) {
+      const match = strevByIdentifier.get(asset.identifier.trim().toLowerCase());
+      if (!match) {
+        events.push({
+          id: `live-missing-${asset.id}`,
+          timestamp: asset.modifiedDate ?? data.checkedAt,
+          identifier: asset.identifier,
+          eventType: "create",
+          status: "failed",
+          attempts: 1,
+          detail: "No matching Strev asset for identifier.",
+        });
+        continue;
+      }
+
+      if (match.name.trim().toLowerCase() !== asset.name.trim().toLowerCase()) {
+        events.push({
+          id: `live-mismatch-${asset.id}`,
+          timestamp: asset.modifiedDate ?? data.checkedAt,
+          identifier: asset.identifier,
+          eventType: "update",
+          status: "partial",
+          attempts: 1,
+          detail: `Name mismatch: Kaseya "${asset.name}" vs Strev "${match.name}".`,
+        });
+      }
+    }
+
+    return events;
   } catch {
     return [];
   }

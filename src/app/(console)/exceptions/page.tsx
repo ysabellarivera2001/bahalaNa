@@ -3,10 +3,10 @@ import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getAssetComparison } from "@/services/assetService";
-import { getSyncEvents } from "@/services/operationService";
+import { getServerSyncEvents } from "@/services/operationServerService";
 
 export default async function ExceptionsPage() {
-  const [comparison, events] = await Promise.all([getAssetComparison(), getSyncEvents()]);
+  const [comparison, events] = await Promise.all([getAssetComparison(), getServerSyncEvents()]);
 
   const assetExceptions = comparison.filter((row) => row.action === "CREATE" || !row.kaseya.hasAssetInfo);
   const eventExceptions = events.filter((row) => row.status === "failed" || row.status === "partial");

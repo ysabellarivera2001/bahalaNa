@@ -3,13 +3,13 @@ import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { DashboardSyncPanel } from "@/components/dashboard/dashboard-sync-panel";
 import { getAssetComparison, getTransferHistory } from "@/services/assetService";
-import { getSyncOverview } from "@/services/operationService";
+import { getServerSyncOverview } from "@/services/operationServerService";
 
 export default async function DashboardPage() {
   const [comparison, transferHistory, overview] = await Promise.all([
     getAssetComparison(),
     getTransferHistory(),
-    getSyncOverview(),
+    getServerSyncOverview(),
   ]);
 
   const createCount = comparison.filter((row) => row.action === "CREATE").length;

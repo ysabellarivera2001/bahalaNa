@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchKaseyaAssets, fetchStrevAssets, LiveAsset } from "@/lib/live-sync-data";
+import { loadLiveAssetSnapshot, LiveAsset } from "@/lib/live-sync-data";
 
 type LiveSyncSummary = {
   kaseyaCount: number;
@@ -74,19 +74,22 @@ function buildSummary(kaseyaAssets: LiveAsset[], strevAssets: LiveAsset[]): Live
 }
 
 export async function GET() {
-  try {
-    const [kaseyaAssets, strevAssets] = await Promise.all([fetchKaseyaAssets(), fetchStrevAssets()]);
+  const snapshot = await loadLiveAssetSnapshot();
 
-    return NextResponse.json<LiveSyncResponse>({
-      ok: true,
-      checkedAt: new Date().toISOString(),
-      source: "live",
-      summary: buildSummary(kaseyaAssets, strevAssets),
-      kaseyaAssets,
-      strevAssets,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected error while loading live sync assets.";
-    return NextResponse.json<LiveSyncResponse>(fallbackResponse(message), { status: 200 });
+  if (snapshot.source === "mock") {
+    const fallback = fallbackResponse(snapshot.message ?? "Live sync endpoint is unavailable.");
+    fallback.kaseyaAssets = snapshot.kaseyaAssets;
+    fallback.strevAssets = snapshot.strevAssets;
+    fallback.summary = buildSummary(snapshot.kaseyaAssets, snapshot.strevAssets);
+    return NextResponse.json<LiveSyncResponse>(fallback, { status: 200 });
   }
+
+  return NextResponse.json<LiveSyncResponse>({
+    ok: true,
+    checkedAt: new Date().toISOString(),
+    source: "live",
+    summary: buildSummary(snapshot.kaseyaAssets, snapshot.strevAssets),
+    kaseyaAssets: snapshot.kaseyaAssets,
+    strevAssets: snapshot.strevAssets,
+  });
 }
